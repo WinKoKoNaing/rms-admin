@@ -1,6 +1,6 @@
 import { Popover, RadioGroup, Switch } from "@headlessui/react";
 import { Create, FilterList } from "@mui/icons-material";
-import { useCategory, useTag } from "hooks";
+import { useCategory, useTag } from "hooks/swr";
 import Category from "models/Category";
 import Tag from "models/Tag";
 import { useState } from "react";

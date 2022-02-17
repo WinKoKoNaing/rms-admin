@@ -2,9 +2,10 @@ import { Switch, Transition } from "@headlessui/react";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { Close } from "@mui/icons-material";
 import MenuAPI from "appApi/MenuAPI";
-import { useCategory, useTag } from "hooks";
+import { useCategory, useTag } from "hooks/swr";
+import Menu from "models/Menu";
 import Image from "next/image";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useState } from "react";
 import {
   Controller,
   FieldError,
@@ -15,10 +16,17 @@ import Select from "react-select";
 import { toBase64 } from "utli";
 import * as yup from "yup";
 
+enum Action {
+  NONE,
+  CREATE,
+  UPDATE,
+}
+
 type CreateMenuProp = {
-  isShowing: boolean;
+  action: Action;
   closeDialogModal: Function;
   triggerRefreshMenuList: Function;
+  menu: Menu | undefined;
 };
 
 type ReactSelectOption = {
@@ -38,15 +46,12 @@ type FormValues = {
 
 export default function CreateMenu({
   triggerRefreshMenuList,
-  isShowing,
+  action,
   closeDialogModal,
+  menu,
 }: CreateMenuProp) {
   const menuAPI = new MenuAPI();
   const [isSaveLoading, setIsSaveLoading] = useState<boolean>(false);
-
-  function closeModal() {
-    closeDialogModal();
-  }
 
   const { data: tagOptions } = useTag(true);
   const { data: categoriesOptions } = useCategory(true);
@@ -58,17 +63,19 @@ export default function CreateMenu({
       category: yup.object().required("The category is required field."),
       tags: yup.array().required("The tags is required field"),
       description: yup.string().required("The description is required field."),
-      menu_image: yup
-        .mixed()
-        .test("EmptyFile", "Please select a image", (value) => {
-          return value?.length !== 0;
-        })
-        .test("fileType", "Unsupported File Format", function (value) {
-          return ["image/jpg", "image/jpeg", "image/png"].includes(
-            value?.[0]?.type
-          );
-        })
-        .required("File is required field"),
+      menu_image:
+        action != Action.UPDATE
+          ? yup
+              .mixed()
+              .test("EmptyFile", "Please select a image", (value) => {
+                return value?.length !== 0;
+              })
+              .test("fileType", "Unsupported File Format", function (value) {
+                return ["image/jpg", "image/jpeg", "image/png"].includes(
+                  value?.[0]?.type
+                );
+              })
+          : yup.mixed(),
       is_available: yup.boolean().required("This field is required field."),
     })
     .required();
@@ -78,34 +85,63 @@ export default function CreateMenu({
     handleSubmit,
     watch,
     control,
+    setValue,
+    reset,
     formState: { errors },
   } = useForm<FormValues>({ resolver: yupResolver(schema) });
 
-  const onSubmit: SubmitHandler<FormValues> = async (data) => {
-    setIsSaveLoading(true);
-    const menuData = {
-      name: data.name,
-      price: data.price,
-      categoryId: data.category.value,
-      tags: data.tags.map((tag) => tag.value),
-      description: data.description,
-      is_available: data.is_available,
-      image: await toBase64(data.menu_image[0]),
-    };
-    menuAPI
-      .createMenu(menuData)
-      .then((data) => {
-        triggerRefreshMenuList();
-        setIsSaveLoading(false);
-      })
-      .catch((e) => {
-        console.log(e);
-        setIsSaveLoading(false);
+  useEffect(() => {
+    console.log(menu);
+    if (menu) {
+      setValue("name", menu.name!);
+      setValue("price", menu.price!);
+      setValue("category", {
+        label: menu.categories.name!,
+        value: menu.categories.id!,
       });
+      setValue(
+        "tags",
+        menu.tags!.map((t) => ({ value: t.tag.id, label: t.tag.name }))
+      );
+      setValue("description", menu.description!);
+      setValue("is_available", menu.is_available!);
+      // setValue('menu_image', menu.menu_image!);
+    }
+  }, [menu, setValue]);
+  const onSubmit: SubmitHandler<FormValues> = async (data) => {
+    if (action != Action.UPDATE) {
+      setIsSaveLoading(true);
+      const menuData = {
+        name: data.name,
+        price: data.price,
+        categoryId: data.category.value,
+        tags: data.tags.map((tag) => tag.value),
+        description: data.description,
+        is_available: data.is_available,
+        image:
+          data.menu_image.length > 0
+            ? await toBase64(data.menu_image[0])
+            : menu?.menu_image,
+      };
+      // console.log(menuData);
+      menuAPI
+        .createMenu(menuData)
+        .then((data) => {
+          triggerRefreshMenuList();
+          setIsSaveLoading(false);
+        })
+        .catch((e) => {
+          console.log(e);
+          setIsSaveLoading(false);
+        });
+    } else {
+      alert("Update is in development.");
+    }
   };
   return (
     <Transition
-      show={isShowing}
+      key={action}
+      show={action !== Action.NONE}
       enter="transition-opacity duration-75"
       enterFrom="opacity-0"
       enterTo="opacity-100"
@@ -114,12 +150,11 @@ export default function CreateMenu({
       leaveTo="opacity-0"
       as={Fragment}
     >
-      {/* <Dialog
-        as="div"
-        className="fixed inset-0 z-10 px-28 py-20 overflow-y-auto bg-white rounded-lg shadow-lg border"
-        onClose={closeModal}
-      > */}
-      <form className="mx-auto space-y-4" onSubmit={handleSubmit(onSubmit)}>
+      <form
+        key={action}
+        className="mx-auto space-y-4"
+        onSubmit={handleSubmit(onSubmit)}
+      >
         <div className="flex justify-between">
           <h1 className="font-bold text-xl tracking-wider">Create Menu</h1>
           <Close
@@ -179,10 +214,11 @@ export default function CreateMenu({
                 Category
               </label>
               <Controller
-                render={({ field: { onChange, name, ref } }) => (
+                render={({ field: { onChange, value, name, ref } }) => (
                   <Select
                     ref={ref}
                     name={name}
+                    value={value}
                     className="mt-1"
                     styles={{
                       input: (provided: any) => ({
@@ -212,10 +248,11 @@ export default function CreateMenu({
                 Tag
               </label>
               <Controller
-                render={({ field: { onChange, name, ref } }) => (
+                render={({ field: { onChange, value, name, ref } }) => (
                   <Select
                     ref={ref}
                     name={name}
+                    value={value}
                     className="mt-1"
                     styles={{
                       input: (provided: any) => ({
@@ -255,35 +292,45 @@ export default function CreateMenu({
                 {errors.description?.message}
               </p>
             </div>
-
-            <button
-              type="submit"
-              className="flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-            >
-              {isSaveLoading && (
-                <svg
-                  className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-              )}
-              Save
-            </button>
+            {/* <button onClick={reset}>Reset</button> */}
+            <div className="flex gap-2">
+              <button
+                disabled={isSaveLoading}
+                type="submit"
+                className="flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              >
+                {isSaveLoading && (
+                  <svg
+                    className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                )}
+                {(Action.CREATE == action && "Create") ||
+                  (Action.UPDATE == action && "Update")}
+              </button>
+              <button
+                type="reset"
+                className="flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              >
+                Reset
+              </button>
+            </div>
           </div>
           <div className="space-y-4">
             <div className="flex-grow-0">
@@ -350,12 +397,16 @@ export default function CreateMenu({
                 {errors.menu_image?.message}
               </p>
             </div>
-            {watch("menu_image")?.length > 0 && (
+            {(watch("menu_image")?.length > 0 || menu?.menu_image) && (
               <div className="rounded-md relative w-full lg:w-1/3 h-1/2 lg:h-1/3 overflow-hidden border-gray-300 border-2">
                 <Image
                   layout="fill"
                   objectFit="cover"
-                  src={URL.createObjectURL(watch("menu_image")?.[0])}
+                  src={
+                    menu?.menu_image
+                      ? menu.menu_image
+                      : URL.createObjectURL(watch("menu_image")?.[0])
+                  }
                   alt="menu image"
                 />
               </div>
@@ -363,7 +414,6 @@ export default function CreateMenu({
           </div>
         </section>
       </form>
-      {/* </Dialog> */}
     </Transition>
   );
 }
