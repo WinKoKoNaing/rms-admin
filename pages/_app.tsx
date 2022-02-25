@@ -3,6 +3,8 @@ import type { AppProps } from "next/app";
 import Layout from "../components/layout";
 import { SessionProvider } from "next-auth/react";
 import Head from "next/head";
+import "dotenv/config";
+import { useEffect } from "react";
 function MyApp({ Component, pageProps: { session, ...pageProps } }: AppProps) {
   return (
     <SessionProvider session={session}>
