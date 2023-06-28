@@ -3,7 +3,7 @@ import type { NextPage } from "next";
 import React from "react";
 const Dashborad: NextPage = () => {
   return (
-    <section className="flex">
+    <section className="flex items-center">
       <section className="space-y-7 md:w-9/12  px-7 ">
         <section className="space-y-3">
           <h1 className="font-bold text-lg tracking-wider">Welcome, Porlar</h1>
