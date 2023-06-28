@@ -11,7 +11,7 @@ const Dashborad: NextPage = () => {
           <Box />
         </section>
 
-        <div className="flex gap-3">
+        <div className="flex gap-2">
           <RecentOrderPaper />
         </div>
       </section>
